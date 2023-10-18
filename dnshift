@@ -1,0 +1,86 @@
+#!/bin/bash
+
+declare -A dns_mapping
+dns_mapping["google"]="8.8.8.8"
+dns_mapping["cloudflare"]="1.1.1.1"
+dns_mapping["opendns"]="208.67.222.222"
+dns_mapping["shecan"]="178.22.122.100"
+
+print_help() {
+  echo "Usage: ./dnshift.sh [Option]"
+  echo "Options:"
+  echo "  disconnect - Disconnect from the current DNS server"
+  echo "  status     - Check the current DNS connection status"
+  echo "  help       - Print this help message"
+  echo "  <dns_key>  - Connect to the specified DNS server (e.g., google, cloudflare, opendns)"
+  echo " "
+}
+
+print_dns_mappings() {
+  echo "DNS Mappings:"
+  for key in "${!dns_mapping[@]}"; do
+    echo "$key: ${dns_mapping[$key]}"
+  done
+}
+
+disconnect_from_dns() {
+  if [ -f "/tmp/dnshift" ]; then
+    sudo cp /tmp/dnshift /etc/resolv.conf
+    echo "Disconnected from DNS server."
+  else
+    echo "No DNS server currently connected."
+  fi
+  exit 0
+}
+
+
+check_status() {
+  if sudo cmp -s /etc/resolv.conf /tmp/dnshift; then
+    echo "Status: Not connected"
+    echo "nameserver $(sudo awk '/nameserver/{print $2}' /etc/resolv.conf)"
+  else
+    echo "Status: Connected"
+    sudo awk '/nameserver/{print $2}' /etc/resolv.conf | while read -r dns; do
+      for key in "${!dns_mapping[@]}"; do
+        if [ "${dns_mapping[$key]}" = "$dns" ]; then
+          echo "$key: $dns"
+        fi
+      done
+    done
+  fi
+  exit 0
+}
+
+if [ ! -f "/tmp/dnshift" ]; then
+    cp /etc/resolv.conf /tmp/dnshift
+fi
+
+if [ -z "$1" ]; then
+  print_help
+  read -p "Enter one of [Options]: " input
+else
+  input=$1
+fi
+
+if [ "$input" = "disconnect" ]; then
+  disconnect_from_dns
+elif [ "$input" = "status" ]; then
+  check_status
+elif [ "$input" = "help" ]; then
+  print_help
+  exit 0
+fi
+
+dns_server=${dns_mapping[$input]}
+
+if [ -z "$dns_server" ]; then
+  echo "Input: $input"
+  echo "DNS Server: Unknown"
+  exit 1
+fi
+
+echo "Input: $input"
+echo "DNS Server: $dns_server"
+
+echo "nameserver $dns_server" | sudo tee /etc/resolv.conf > /dev/null
+echo "Successfully connected to DNS server."
